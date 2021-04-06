@@ -2,7 +2,103 @@
     <head>
         <script src="https://www.gstatic.com/firebasejs/8.3.2/firebase-app.js"></script>
         <script src="https://www.gstatic.com/firebasejs/8.3.2/firebase-firestore.js"></script>
+
+        <script>
+            const userMap = {
+                "qwe23Sad": "d",
+                "helloworld": "k",
+            };
+
+            var loginDiv;
+            var pwdInput;
+            var txtInput;
+            var db;
+            var who;
+
+            function save(txt, who) {
+                var now = new Date();
+
+                db.collection("messages").add({
+                    txt: txt,
+                    who: who,
+                    at: now
+                })
+                .then(() => {
+                    console.log("Document successfully written!");
+                })
+                .catch((error) => {
+                    console.error("Error writing document: ", error);
+                });
+            }
+
+            function onLoginClick() {
+                console.log(pwdInput, pwdInput.value);
+                var user = userMap[pwdInput.value];
+                if (user == null) {
+                    console.log("unknown user");
+                    return;
+                }
+
+                toggleUX();
+                who = user;
+                console.log("who", who);
+            }
+
+            function onSendClick() {
+                console.log("sending");
+            }
+
+            function toggleUX() {
+                loginDiv.hidden = true;
+                contentDiv.hidden = false;
+            }
+
+            function init() {
+                console.log("init start");
+
+                var firebaseConfig = {
+                    apiKey: "AIzaSyBThzHgq5B34m00L4mZQ5eDLxXBmDlhqWQ",
+                    authDomain: "dkhl2021.firebaseapp.com",
+                    projectId: "dkhl2021",
+                    storageBucket: "dkhl2021.appspot.com",
+                    messagingSenderId: "900227237897",
+                    appId: "1:900227237897:web:e507d80fc08bd493ae90d8",
+                    measurementId: "G-5NTHRBEGG9"
+                };
+
+                firebase.initializeApp(firebaseConfig);
+                console.log("init done");
+
+                loginDiv = document.getElementById("login");
+                contentDiv = document.getElementById("content");
+                pwdInput = document.getElementById("pwd");
+                txtInput = document.getElementById("txt");
+                db = firebase.firestore();
+            }
+        </script>
+
     </head>
-    <body>
+    <body onload="onBodyLoad()">
+        <div id="login">
+            <input type="password" autocomplete="off" id="pwd" />
+            <button type="button" onclick="onLoginClick()">Login</button>
+        </div>
+        
+        <div id="content" hidden>
+            <p>Text</p>
+            <textarea autocomplete="off" id="txt" style="width: 100%;" rows="10"></textarea>
+            <br/>
+            <br/>
+            <button type="button" onclick="onSendClick()">Send</button>
+        </div>
+
+        <script>
+            function onBodyLoad() {
+                init();
+            }
+        </script>
+
+        <script src="https://www.gstatic.com/firebasejs/8.3.2/firebase-app.js"></script>
+        <script src="https://www.gstatic.com/firebasejs/8.3.2/firebase-firestore.js"></script>
     </body>
 </html>
