@@ -13,23 +13,18 @@
             var loginDiv;
             var pwdInput;
             var txtInput;
+            var sendButton;
             var db;
             var who;
 
-            function save(txt, who) {
+            function save(txt) {
                 var now = new Date();
 
-                db.collection("messages").add({
+                return db.collection("messages").add({
                     txt: txt,
                     who: who,
                     at: now
                 })
-                .then(() => {
-                    console.log("Document successfully written!");
-                })
-                .catch((error) => {
-                    console.error("Error writing document: ", error);
-                });
             }
 
             function onLoginClick() {
@@ -47,11 +42,28 @@
 
             function onSendClick() {
                 console.log("sending");
+                sendButton.disabled = true;
+                save(txtInput.value.trim())
+                .then(() => {
+                    console.log("Document successfully written!");
+                    sendButton.disabled = false;
+                })
+                .catch((error) => {
+                    console.error("Error writing document: ", error);
+                    sendButton.disabled = false;
+                });
             }
 
             function toggleUX() {
                 loginDiv.hidden = true;
                 contentDiv.hidden = false;
+            }
+
+            function onMessagesUpdate(snapshot) {
+                console.log(snapshot);
+                snapshot.forEach((doc) => {           
+                    console.log(doc.data(), doc.id);
+                });
             }
 
             function init() {
@@ -74,23 +86,36 @@
                 contentDiv = document.getElementById("content");
                 pwdInput = document.getElementById("pwd");
                 txtInput = document.getElementById("txt");
+                sendButton = document.getElementById("send");
                 db = firebase.firestore();
+
+                var all = db.collection("messages")
+                    .orderBy("at", "desc")
+                    .limit(100);
+
+                all.onSnapshot(onMessagesUpdate);
             }
         </script>
 
     </head>
     <body onload="onBodyLoad()">
-        <div id="login">
-            <input type="password" autocomplete="off" id="pwd" />
-            <button type="button" onclick="onLoginClick()">Login</button>
-        </div>
-        
-        <div id="content">
-            <p>Text</p>
-            <textarea autocomplete="off" id="txt" style="width: 96vw;" rows="10"></textarea>
-            <br/>
-            <br/>
-            <button type="button" onclick="onSendClick()">Send</button>
+        <div style="max-width: 1000px; margin: auto;">
+            <div style="max-width: 350; margin: auto;">
+                <img src="GitHub_Logo.png" width="350"/>
+            </div>
+
+            <div id="login" style="max-width: 500; margin: auto;">
+                <input type="password" autocomplete="off" id="pwd" />
+                <button type="button" onclick="onLoginClick()">Login</button>
+            </div>
+            
+            <div id="content" hidden>
+                <p>Text</p>
+                <textarea autocomplete="off" id="txt" style="width: 96vw;" rows="10"></textarea>
+                <br/>
+                <br/>
+                <button id="send" type="button" onclick="onSendClick()">Send</button>
+            </div>
         </div>
 
         <script>
