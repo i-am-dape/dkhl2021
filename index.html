@@ -10,6 +10,7 @@
             "helloworld": "k",
         };
 
+        var contentVisible;
         var loginDiv;
         var contentDiv;
         var postsDiv;
@@ -70,8 +71,15 @@
         }
 
         function toggleUX() {
-            loginDiv.hidden = true;
-            contentDiv.hidden = false;
+            if (contentVisible) {
+                loginDiv.style.display = "";
+                contentDiv.style.display = "none";
+                contentVisible = false;
+            } else {
+                loginDiv.style.display = "none";
+                contentDiv.style.display = "";
+                contentVisible = true;
+            }
         }
 
         function createMessageContent(data) {
@@ -124,9 +132,18 @@
         function handleTabShown() {
         }
 
+        function onPageHide() {
+            console.log("pagehide change", document["webkitHidden"]);
+            if (document.hidden) {
+                handleTabHidden();
+            } else {
+                handleTabShown();
+            }
+        }
+
         function onVisibilityChange() {
             console.log("viz change", document["webkitHidden"]);
-            if (document["webkitHidden"]) {
+            if (document.hidden) {
                 handleTabHidden();
             } else {
                 handleTabShown();
@@ -135,6 +152,7 @@
 
         function init() {
             console.log("init start");
+            contentVisible = false;
 
             var firebaseConfig = {
                 apiKey: "AIzaSyBThzHgq5B34m00L4mZQ5eDLxXBmDlhqWQ",
@@ -164,6 +182,7 @@
             messagesQuery.onSnapshot(onMessagesUpdate);
 
             document.addEventListener("webkitvisibilitychange", onVisibilityChange, false);
+            window.addEventListener("pagehide", onPageHide, false);
         }
     </script>
   </head>
@@ -173,12 +192,12 @@
         <img src="GitHub_Logo.png" width="250"/>
       </div>
 
-      <div id="login" style="max-width: 500; margin: auto;">
+      <div id="login" style="max-width: 500; margin: auto; justify-content: center; display: flex;">
         <input type="password" autocomplete="off" id="pwd" />
         <button type="button" onclick="onLoginClick()">Login</button>
       </div>
         
-      <div id="content" hidden>
+      <div id="content" style="display: none;">
         <textarea autocomplete="off" id="txt" style="width: 1000px;" rows="10"></textarea>
         <br/>
         <br/>
