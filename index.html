@@ -1,168 +1,184 @@
 <html>
-    <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <script src="https://www.gstatic.com/firebasejs/8.3.2/firebase-app.js"></script>
-        <script src="https://www.gstatic.com/firebasejs/8.3.2/firebase-firestore.js"></script>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://www.gstatic.com/firebasejs/8.3.2/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.3.2/firebase-firestore.js"></script>
 
-        <script>
-            const userMap = {
-                "qwe23Sad": "d",
-                "helloworld": "k",
-            };
+    <script>
+        const userMap = {
+            "qwe23Sad": "d",
+            "helloworld": "k",
+        };
 
-            var loginDiv;
-            var pwdInput;
-            var txtInput;
-            var sendButton;
-            var db;
-            var who;
-            var messagesQuery;
+        var loginDiv;
+        var contentDiv;
+        var postsDiv;
+        var pwdInput;
+        var txtInput;
+        var sendButton;
+        var db;
 
-            // messages holds ID -> div mapping for all already shown messages.
-            // This is used to dedupe new messages as messagesQuery is updated
-            // on every change to the collection.
-            var messages = {};
+        // initial of the logged in user, set from password input.
+        var who;
 
-            function save(txt) {
-                var now = new firebase.firestore.Timestamp.now();
+        // firestore query that listens to changes on the messages collection.
+        var messagesQuery;
 
-                return db.collection("messages").add({
-                    txt: txt,
-                    who: who,
-                    at: now
-                })
+        // messages holds ID -> div mapping for all already shown messages.
+        // This is used to dedupe new messages as messagesQuery is updated
+        // on every change to the collection.
+        var messages = {};
+
+        function save(txt) {
+            var now = new firebase.firestore.Timestamp.now();
+
+            return db.collection("messages").add({
+                txt: txt,
+                who: who,
+                at: now
+            })
+        }
+
+        function onLoginClick() {
+            console.log(pwdInput, pwdInput.value);
+            var user = userMap[pwdInput.value];
+            if (user == null) {
+                console.log("unknown user");
+                return;
             }
 
-            function onLoginClick() {
-                console.log(pwdInput, pwdInput.value);
-                var user = userMap[pwdInput.value];
-                if (user == null) {
-                    console.log("unknown user");
+            toggleUX();
+            who = user;
+            console.log("who", who);
+        }
+
+        function onSendClick() {
+            console.log("sending");
+            sendButton.disabled = true;
+            let txt = txtInput.value.trim();
+
+            save(txt)
+            .then(() => {
+                console.log("Document successfully written!");
+                sendButton.disabled = false;
+                txtInput.value = "";
+            })
+            .catch((error) => {
+                console.error("Error writing document: ", error);
+                sendButton.disabled = false;
+            });
+        }
+
+        function toggleUX() {
+            loginDiv.hidden = true;
+            contentDiv.hidden = false;
+        }
+
+        function createMessageContent(data) {
+            let at = data.at.toDate();
+
+            let msgDiv = document.createElement("div");
+            msgDiv.appendChild(document.createElement("hr"));
+
+            let timeheader = document.createElement("small");
+            timeheader.appendChild(
+                document.createTextNode(
+                    "[" + data.who + "]:" + at.toLocaleDateString() + " " + at.toLocaleTimeString()));
+
+            msgDiv.appendChild(timeheader);
+            
+            let txtDiv = document.createElement("div");
+            msgDiv.appendChild(txtDiv);
+            txtDiv.style.margin = "10px";
+            let rows = data.txt.split("\n");
+            for (let i in rows) {
+                txtDiv.appendChild(document.createElement("br"));
+                txtDiv.appendChild(document.createTextNode(rows[i]));
+            }
+            return msgDiv;
+        }
+
+        function onMessagesUpdate(snapshot) {
+            console.log(snapshot);
+            let content = [];
+
+            snapshot.forEach((doc) => {
+                if (doc.id in messages) {
+                    console.info('skipping id:', doc.id);
                     return;
                 }
+                console.log(doc.data(), doc.id);
+                content.push({div:createMessageContent(doc.data()), id:doc.id})
+            });
 
-                toggleUX();
-                who = user;
-                console.log("who", who);
+            var prev = postsDiv.firstChild;
+            for (let i in content) {
+                postsDiv.insertBefore(content[i].div, prev);
+                messages[content[i].id] = content[i];
             }
+        }
 
-            function onSendClick() {
-                console.log("sending");
-                sendButton.disabled = true;
-                let txt = txtInput.value.trim();
+        function init() {
+            console.log("init start");
 
-                save(txt)
-                .then(() => {
-                    console.log("Document successfully written!");
-                    sendButton.disabled = false;
-                })
-                .catch((error) => {
-                    console.error("Error writing document: ", error);
-                    sendButton.disabled = false;
-                });
-            }
+            var firebaseConfig = {
+                apiKey: "AIzaSyBThzHgq5B34m00L4mZQ5eDLxXBmDlhqWQ",
+                authDomain: "dkhl2021.firebaseapp.com",
+                projectId: "dkhl2021",
+                storageBucket: "dkhl2021.appspot.com",
+                messagingSenderId: "900227237897",
+                appId: "1:900227237897:web:e507d80fc08bd493ae90d8",
+                measurementId: "G-5NTHRBEGG9"
+            };
 
-            function toggleUX() {
-                loginDiv.hidden = true;
-                contentDiv.hidden = false;
-            }
+            firebase.initializeApp(firebaseConfig);
+            console.log("init done");
 
-            function createMessageContent(data) {
-                let at = data.at.toDate();
+            loginDiv = document.getElementById("login");
+            contentDiv = document.getElementById("content");
+            postsDiv = document.getElementById("posts");
+            pwdInput = document.getElementById("pwd");
+            txtInput = document.getElementById("txt");
+            sendButton = document.getElementById("send");
+            db = firebase.firestore();
 
-                let msgDiv = document.createElement("div");
+            messagesQuery = db.collection("messages")
+                .orderBy("at", "desc")
+                .limit(100);
 
-                let timeheader = document.createElement("small");
-                timeheader.appendChild(document.createTextNode(at.toLocaleDateString() + " " + at.toLocaleTimeString()));
+            messagesQuery.onSnapshot(onMessagesUpdate);
+        }
+    </script>
+  </head>
+  <body onload="onBodyLoad()">
+    <div style="max-width: 1000px; margin: auto;">
+      <div style="max-width: 250; margin: auto;">
+        <img src="GitHub_Logo.png" width="250"/>
+      </div>
 
-                msgDiv.appendChild(timeheader);
-                
-                let rows = data.txt.split("\n");
-                for (let i in rows) {
-                    msgDiv.appendChild(document.createElement("br"));
-                    msgDiv.appendChild(document.createTextNode(rows[i]));
-                }
-                return msgDiv;
-            }
-
-            function onMessagesUpdate(snapshot) {
-                console.log(snapshot);
-                let content = [];
-
-                snapshot.forEach((doc) => {
-                    if (doc.id in messages) {
-                        console.info('skipping id:', doc.id);
-                        return;
-                    }
-                    console.log(doc.data(), doc.id);
-                    content.push({div:createMessageContent(doc.data()), id:doc.id})
-                });
-
-                var prev = contentDiv.firstChild;
-                for (let i in content) {
-                    contentDiv.insertBefore(content[i].div, prev);
-                    messages[content[i].id] = content[i];
-                }
-            }
-
-            function init() {
-                console.log("init start");
-
-                var firebaseConfig = {
-                    apiKey: "AIzaSyBThzHgq5B34m00L4mZQ5eDLxXBmDlhqWQ",
-                    authDomain: "dkhl2021.firebaseapp.com",
-                    projectId: "dkhl2021",
-                    storageBucket: "dkhl2021.appspot.com",
-                    messagingSenderId: "900227237897",
-                    appId: "1:900227237897:web:e507d80fc08bd493ae90d8",
-                    measurementId: "G-5NTHRBEGG9"
-                };
-
-                firebase.initializeApp(firebaseConfig);
-                console.log("init done");
-
-                loginDiv = document.getElementById("login");
-                contentDiv = document.getElementById("content");
-                pwdInput = document.getElementById("pwd");
-                txtInput = document.getElementById("txt");
-                sendButton = document.getElementById("send");
-                db = firebase.firestore();
-
-                messagesQuery = db.collection("messages")
-                    .orderBy("at", "desc")
-                    .limit(100);
-
-                messagesQuery.onSnapshot(onMessagesUpdate);
-            }
-        </script>
-
-    </head>
-    <body onload="onBodyLoad()">
-        <div style="max-width: 1000px; margin: auto;">
-            <div style="max-width: 250; margin: auto;">
-                <img src="GitHub_Logo.png" width="250"/>
-            </div>
-
-            <div id="login" style="max-width: 500; margin: auto;">
-                <input type="password" autocomplete="off" id="pwd" />
-                <button type="button" onclick="onLoginClick()">Login</button>
-            </div>
-            
-            <div id="content" hidden>
-                <textarea autocomplete="off" id="txt" style="width: 1000px;" rows="10"></textarea>
-                <br/>
-                <br/>
-                <button id="send" type="button" onclick="onSendClick()">Send</button>
-            </div>
+      <div id="login" style="max-width: 500; margin: auto;">
+        <input type="password" autocomplete="off" id="pwd" />
+        <button type="button" onclick="onLoginClick()">Login</button>
+      </div>
+        
+      <div id="content" hidden>
+        <textarea autocomplete="off" id="txt" style="width: 1000px;" rows="10"></textarea>
+        <br/>
+        <br/>
+        <button id="send" type="button" onclick="onSendClick()">Send</button>
+        <div id="posts">
+            <!-- nodes are added here dynamically through javascript as messages arrive -->
         </div>
+      </div>
+    </div>
 
-        <script>
-            function onBodyLoad() {
-                init();
-            }
-        </script>
+    <script>
+      function onBodyLoad() {
+        init();
+      }
+    </script>
 
-        <script src="https://www.gstatic.com/firebasejs/8.3.2/firebase-app.js"></script>
-        <script src="https://www.gstatic.com/firebasejs/8.3.2/firebase-firestore.js"></script>
-    </body>
+    <script src="https://www.gstatic.com/firebasejs/8.3.2/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.3.2/firebase-firestore.js"></script>
+  </body>
 </html>
