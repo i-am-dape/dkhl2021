@@ -16,9 +16,10 @@
             var sendButton;
             var db;
             var who;
+            var messagesQuery;
 
             function save(txt) {
-                var now = new Date();
+                var now = new firebase.firestore.Timestamp.now();
 
                 return db.collection("messages").add({
                     txt: txt,
@@ -43,7 +44,9 @@
             function onSendClick() {
                 console.log("sending");
                 sendButton.disabled = true;
-                save(txtInput.value.trim())
+                let txt = txtInput.value.trim();
+
+                save(txt)
                 .then(() => {
                     console.log("Document successfully written!");
                     sendButton.disabled = false;
@@ -59,11 +62,42 @@
                 contentDiv.hidden = false;
             }
 
+            function createMessageContent(data) {
+                let at = data.at.toDate();
+
+                let msgDiv = document.createElement("div");
+
+                let timeheader = document.createElement("small");
+                timeheader.appendChild(document.createTextNode(at.toLocaleDateString() + " " + at.toLocaleTimeString()));
+
+                msgDiv.appendChild(timeheader);
+                
+                let rows = data.txt.split("\n");
+                for (let i in rows) {
+                    msgDiv.appendChild(document.createElement("br"));
+                    msgDiv.appendChild(document.createTextNode(rows[i]));
+                }
+                return msgDiv;
+            }
+
+            function addMessage(doc) {
+                let content = createMessageContent(doc.data());
+            }
+
             function onMessagesUpdate(snapshot) {
                 console.log(snapshot);
-                snapshot.forEach((doc) => {           
+                let content = [];
+
+                snapshot.forEach((doc) => {
                     console.log(doc.data(), doc.id);
+                    content.push(createMessageContent(doc.data()));
                 });
+
+                var prev = contentDiv.firstChild;
+                for (let i in content) {
+                    console.log(content[i]);
+                    contentDiv.insertBefore(content[i], prev);
+                }
             }
 
             function init() {
@@ -89,19 +123,19 @@
                 sendButton = document.getElementById("send");
                 db = firebase.firestore();
 
-                var all = db.collection("messages")
+                messagesQuery = db.collection("messages")
                     .orderBy("at", "desc")
                     .limit(100);
 
-                all.onSnapshot(onMessagesUpdate);
+                messagesQuery.onSnapshot(onMessagesUpdate);
             }
         </script>
 
     </head>
     <body onload="onBodyLoad()">
         <div style="max-width: 1000px; margin: auto;">
-            <div style="max-width: 350; margin: auto;">
-                <img src="GitHub_Logo.png" width="350"/>
+            <div style="max-width: 250; margin: auto;">
+                <img src="GitHub_Logo.png" width="250"/>
             </div>
 
             <div id="login" style="max-width: 500; margin: auto;">
@@ -110,8 +144,7 @@
             </div>
             
             <div id="content" hidden>
-                <p>Text</p>
-                <textarea autocomplete="off" id="txt" style="width: 96vw;" rows="10"></textarea>
+                <textarea autocomplete="off" id="txt" style="width: 1000px;" rows="10"></textarea>
                 <br/>
                 <br/>
                 <button id="send" type="button" onclick="onSendClick()">Send</button>
