@@ -30,6 +30,8 @@
         // on every change to the collection.
         var messages = {};
 
+        var lastActivity;
+
         function save(txt) {
             var now = new firebase.firestore.Timestamp.now();
 
@@ -48,6 +50,8 @@
                 return;
             }
 
+            lastActivity = new Date();
+            pwdInput.value = "";
             toggleUX();
             who = user;
             console.log("who", who);
@@ -96,6 +100,7 @@
             window.setInterval((div) => {
                 hideDiv(div);
             }, 15000, msgDiv);
+            lastActivity = new Date();
         }
 
         function createMessageContent(data) {
@@ -115,6 +120,7 @@
             let txtDiv = document.createElement("div");
             msgDiv.appendChild(txtDiv);
             txtDiv.style.margin = "10px";
+            txtDiv.style.color = "lightgrey";
             let rows = data.txt.split("\n");
             for (let i in rows) {
                 txtDiv.appendChild(document.createElement("br"));
@@ -169,6 +175,23 @@
             }
         }
 
+        function onTyping() {
+            lastActivity = new Date();
+        }
+
+        function onGlobalTimerTick() {
+            if (!contentVisible) {
+                return;
+            }
+
+            let dT = (new Date()) - lastActivity;
+            console.log(dT);
+            if (dT > 2 * 60 * 1000) {
+                console.log("toggle!!!");
+                toggleUX();
+            }
+        }
+
         function init() {
             console.log("init start");
             contentVisible = false;
@@ -186,6 +209,8 @@
             firebase.initializeApp(firebaseConfig);
             console.log("init done");
 
+            lastActivity = new Date();
+
             loginDiv = document.getElementById("login");
             contentDiv = document.getElementById("content");
             postsDiv = document.getElementById("posts");
@@ -202,6 +227,8 @@
 
             document.addEventListener("webkitvisibilitychange", onVisibilityChange, false);
             window.addEventListener("pagehide", onPageHide, false);
+
+            window.setInterval(onGlobalTimerTick, 10 * 1000);
         }
     </script>
   </head>
@@ -217,7 +244,7 @@
       </div>
         
       <div id="content" style="display: none;">
-        <textarea autocomplete="off" id="txt" style="width: 1000px;" rows="10"></textarea>
+        <textarea autocomplete="off" id="txt" style="width: 1000px; color: lightgray;" rows="10" onkeypress="onTyping()"></textarea>
         <br/>
         <br/>
         <button id="send" type="button" onclick="onSendClick()">Send</button>
