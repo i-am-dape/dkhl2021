@@ -72,14 +72,30 @@
 
         function toggleUX() {
             if (contentVisible) {
-                loginDiv.style.display = "";
-                contentDiv.style.display = "none";
+                showDiv(loginDiv);
+                hideDiv(contentDiv);
                 contentVisible = false;
             } else {
-                loginDiv.style.display = "none";
-                contentDiv.style.display = "";
+                hideDiv(loginDiv);
+                showDiv(contentDiv);
                 contentVisible = true;
             }
+        }
+
+        function showDiv(div) {
+            div.style.display = "";
+        }
+
+        function hideDiv(div) {
+            div.style.display = "none";
+        }
+
+        function onTimeHeaderClick(event) {
+            let msgDiv = event.srcElement.nextSibling;
+            showDiv(msgDiv);
+            window.setInterval((div) => {
+                hideDiv(div);
+            }, 15000, msgDiv);
         }
 
         function createMessageContent(data) {
@@ -93,6 +109,7 @@
                 document.createTextNode(
                     "[" + data.who + "]:" + at.toLocaleDateString() + " " + at.toLocaleTimeString()));
 
+            timeheader.addEventListener("click", onTimeHeaderClick, false);
             msgDiv.appendChild(timeheader);
             
             let txtDiv = document.createElement("div");
@@ -103,6 +120,8 @@
                 txtDiv.appendChild(document.createElement("br"));
                 txtDiv.appendChild(document.createTextNode(rows[i]));
             }
+            txtDiv.style.display = "none";
+
             return msgDiv;
         }
 
