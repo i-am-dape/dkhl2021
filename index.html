@@ -118,6 +118,21 @@
             }
         }
 
+        function handleTabHidden() {
+        }
+
+        function handleTabShown() {
+        }
+
+        function onVisibilityChange() {
+            console.log("viz change", document["webkitHidden"]);
+            if (document["webkitHidden"]) {
+                handleTabHidden();
+            } else {
+                handleTabShown();
+            }
+        }
+
         function init() {
             console.log("init start");
 
@@ -147,6 +162,8 @@
                 .limit(100);
 
             messagesQuery.onSnapshot(onMessagesUpdate);
+
+            document.addEventListener("webkitvisibilitychange", onVisibilityChange, false);
         }
     </script>
   </head>
