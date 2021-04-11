@@ -5,6 +5,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.3.2/firebase-firestore.js"></script>
 
     <script>
+        // userMap maps the passwords to users
         const userMap = {
             "qwe23Sad": "d",
             "helloworld": "k",
@@ -18,6 +19,12 @@
         var txtInput;
         var sendButton;
         var db;
+
+        // messagesSource is the firestore collection where the messages are
+        // stored. This is normally 'messages' but we add suffixes '_dev' suffix
+        // to it to avoid destroying real data during development. And we add
+        // '_ofritt' to it if the 'ofritt' is used to hide content.
+        var messagesSource;
 
         // initial of the logged in user, set from password input.
         var who;
@@ -40,7 +47,7 @@
         function save(txt) {
             var now = new firebase.firestore.Timestamp.now();
 
-            return db.collection("messages").add({
+            return db.collection(messagesSource).add({
                 txt: txt,
                 who: who,
                 at: now
@@ -206,6 +213,12 @@
         function init() {
             console.log("init start");
             contentVisible = false;
+            messagesSource = "messages";
+            if (document.URL != "https://i-am-dape.github.io/dkhl") {
+                messagesSource += "_dev";
+            }
+
+            console.debug(`firestore collection: ${messagesSource}`);
 
             var firebaseConfig = {
                 apiKey: "AIzaSyBThzHgq5B34m00L4mZQ5eDLxXBmDlhqWQ",
@@ -230,7 +243,7 @@
             sendButton = document.getElementById("send");
             db = firebase.firestore();
 
-            messagesQuery = db.collection("messages")
+            messagesQuery = db.collection(messagesSource)
                 .orderBy("at", "desc")
                 .limit(100);
 
