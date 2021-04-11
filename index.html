@@ -30,7 +30,12 @@
         // on every change to the collection.
         var messages = {};
 
-        var lastActivity;
+        // lastActiveAt is the timestamp (date object) from the users
+        // last activity; an activity is one of:
+        // - showing a text section
+        // - typing in the text area
+        // - pressing send
+        var lastActiveAt;
 
         function save(txt) {
             var now = new firebase.firestore.Timestamp.now();
@@ -50,7 +55,7 @@
                 return;
             }
 
-            lastActivity = new Date();
+            updateLastActiveAt();
             pwdInput.value = "";
             toggleUX();
             who = user;
@@ -61,6 +66,7 @@
             console.log("sending");
             sendButton.disabled = true;
             let txt = txtInput.value.trim();
+            updateLastActiveAt();
 
             save(txt)
             .then(() => {
@@ -75,6 +81,7 @@
         }
 
         function toggleUX() {
+            console.log(`swithing UX state: ${contentVisible}`);
             if (contentVisible) {
                 showDiv(loginDiv);
                 hideDiv(contentDiv);
@@ -100,7 +107,7 @@
             window.setInterval((div) => {
                 hideDiv(div);
             }, 15000, msgDiv);
-            lastActivity = new Date();
+            updateLastActiveAt();
         }
 
         function createMessageContent(data) {
@@ -176,7 +183,7 @@
         }
 
         function onTyping() {
-            lastActivity = new Date();
+            updateLastActiveAt();
         }
 
         function onGlobalTimerTick() {
@@ -184,12 +191,16 @@
                 return;
             }
 
-            let dT = (new Date()) - lastActivity;
-            console.log(dT);
+            let dT = (new Date()) - lastActiveAt;
+            console.debug("last active " + dT + "mS ago");
             if (dT > 2 * 60 * 1000) {
-                console.log("toggle!!!");
                 toggleUX();
             }
+        }
+
+        function updateLastActiveAt() {
+            lastActiveAt = new Date();
+            console.debug("last active at updated");
         }
 
         function init() {
@@ -209,7 +220,7 @@
             firebase.initializeApp(firebaseConfig);
             console.log("init done");
 
-            lastActivity = new Date();
+            updateLastActiveAt();
 
             loginDiv = document.getElementById("login");
             contentDiv = document.getElementById("content");
