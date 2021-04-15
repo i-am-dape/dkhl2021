@@ -5,15 +5,77 @@
     <script src="https://www.gstatic.com/firebasejs/8.3.2/firebase-firestore.js"></script>
 
     <script>
+        class DivCtrl {
+            constructor(div) {
+                this.inner_ = div;
+                this.hidden_ = (div.style.display == "none");
+                if (this.hidden_) {
+                    this.display_ = null;
+                } else {
+                    this.display_ = "none";
+                }
+            }
+
+            show() {
+                if (!this.hidden_) {
+                    return;
+                }
+
+                this.inner_.style.display = this.display_;
+                this.hidden_ = false;
+            }
+
+            hide() {
+                if (this.hidden_) {
+                    return;
+                }
+
+                this.display_ = this.inner_.style.display;
+                this.inner_.style.display = "none";
+                this.hidden_ = true;
+            }
+
+            hidden() {
+                return this.hidden_;
+            }
+        }
+
+        class AutohidingDivCtrl {
+            constructor(div) {
+                this.inner_ = new DivCtrl(div);
+                this.cnt_ = 0;
+            }
+
+            show(hideAfterMs) {
+                this.inner_.show();
+                this.cnt_++;
+
+                window.setTimeout((cnt) => {
+                    if (this.cnt_ != cnt) {
+                        console.log(`ignoring timer; ${this.cnt_} ${cnt}`);
+                        return;
+                    }
+
+                    this.inner_.hide();
+                }, 5000, this.cnt_);
+            }
+
+            hide() {
+                this.inner_.hide();
+            }
+        }
+
         // userMap maps the passwords to users
         const userMap = {
             "qwe23Sad": "d",
             "helloworld": "k",
+            "ofritt": "o",
         };
 
         var contentVisible;
         var loginDiv;
         var contentDiv;
+        var txtCtrls = {};
         var postsDiv;
         var pwdInput;
         var txtInput;
@@ -31,6 +93,8 @@
 
         // firestore query that listens to changes on the messages collection.
         var messagesQuery;
+        // function that detaches the listener.
+        var messagesQueryCancel;
 
         // messages holds ID -> div mapping for all already shown messages.
         // This is used to dedupe new messages as messagesQuery is updated
@@ -62,6 +126,24 @@
                 return;
             }
 
+            if (messagesQueryCancel != null) {
+                console.debug("detaching messages listener");
+                messagesQueryCancel();
+                messagesQueryCancel = null;
+
+                for (let id in messages) {
+                    messages[id].div.remove();
+                }
+
+                messages = {};
+            }
+
+            messagesQuery = db.collection(messagesSource)
+                .orderBy("at", "desc")
+                .limit(100);
+
+            messagesQueryCancel = messagesQuery.onSnapshot(onMessagesUpdate);
+
             updateLastActiveAt();
             pwdInput.value = "";
             toggleUX();
@@ -90,34 +172,24 @@
         function toggleUX() {
             console.log(`swithing UX state: ${contentVisible}`);
             if (contentVisible) {
-                showDiv(loginDiv);
-                hideDiv(contentDiv);
+                loginDiv.show();
+                contentDiv.hide();
                 contentVisible = false;
             } else {
-                hideDiv(loginDiv);
-                showDiv(contentDiv);
+                loginDiv.hide();
+                contentDiv.show();
                 contentVisible = true;
             }
         }
 
-        function showDiv(div) {
-            div.style.display = "";
-        }
-
-        function hideDiv(div) {
-            div.style.display = "none";
-        }
-
         function onTimeHeaderClick(event) {
-            let msgDiv = event.srcElement.nextSibling;
-            showDiv(msgDiv);
-            window.setInterval((div) => {
-                hideDiv(div);
-            }, 15000, msgDiv);
             updateLastActiveAt();
+            let id = event.srcElement.nextSibling.dataset.ctrl;
+            let ctrl = txtCtrls[id];
+            ctrl.show(15000);
         }
 
-        function createMessageContent(data) {
+        function createMessageContent(id, data) {
             let at = data.at.toDate();
 
             let msgDiv = document.createElement("div");
@@ -132,6 +204,7 @@
             msgDiv.appendChild(timeheader);
             
             let txtDiv = document.createElement("div");
+            txtDiv.dataset.foo = "1";
             msgDiv.appendChild(txtDiv);
             txtDiv.style.margin = "10px";
             txtDiv.style.color = "lightgrey";
@@ -140,7 +213,10 @@
                 txtDiv.appendChild(document.createElement("br"));
                 txtDiv.appendChild(document.createTextNode(rows[i]));
             }
-            txtDiv.style.display = "none";
+            let txtCtrl = new AutohidingDivCtrl(txtDiv);
+            txtCtrls[id] = txtCtrl;
+            txtDiv.dataset.ctrl = id;
+            txtCtrl.hide();
 
             return msgDiv;
         }
@@ -155,7 +231,7 @@
                     return;
                 }
                 console.log(doc.data(), doc.id);
-                content.push({div:createMessageContent(doc.data()), id:doc.id})
+                content.push({div:createMessageContent(doc.id, doc.data()), id:doc.id})
             });
 
             var prev = postsDiv.firstChild;
@@ -236,19 +312,13 @@
 
             updateLastActiveAt();
 
-            loginDiv = document.getElementById("login");
-            contentDiv = document.getElementById("content");
+            loginDiv = new DivCtrl(document.getElementById("login"));
+            contentDiv = new DivCtrl(document.getElementById("content"));
             postsDiv = document.getElementById("posts");
             pwdInput = document.getElementById("pwd");
             txtInput = document.getElementById("txt");
             sendButton = document.getElementById("send");
             db = firebase.firestore();
-
-            messagesQuery = db.collection(messagesSource)
-                .orderBy("at", "desc")
-                .limit(100);
-
-            messagesQuery.onSnapshot(onMessagesUpdate);
 
             document.addEventListener("webkitvisibilitychange", onVisibilityChange, false);
             window.addEventListener("pagehide", onPageHide, false);
@@ -260,7 +330,7 @@
   <body onload="onBodyLoad()">
     <div style="max-width: 1000px; margin: auto;">
       <div style="max-width: 250; margin: auto;">
-        <img src="GitHub_Logo.png" width="250"/>
+        <img src="GitHub_Logo.png" width="250" />
       </div>
 
       <div id="login" style="max-width: 500; margin: auto; justify-content: center; display: flex;">
