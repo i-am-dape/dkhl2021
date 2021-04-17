@@ -43,6 +43,10 @@
         class AutohidingDivCtrl {
             constructor(div) {
                 this.inner_ = new DivCtrl(div);
+                // cnt_ is used to make sure we only hide the div once, if cnt_ is
+                // larger when the timeout runs then another call to show have finished.
+                // The new call will override the timer of the old call. We don't clear
+                // the timer since it is not worth the complexity.
                 this.cnt_ = 0;
             }
 
@@ -136,6 +140,10 @@
                 }
 
                 messages = {};
+            }
+
+            if (user == 'o') {
+                messagesSource += '_ofritt';
             }
 
             messagesQuery = db.collection(messagesSource)
