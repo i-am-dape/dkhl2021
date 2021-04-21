@@ -50,7 +50,7 @@
                 this.cnt_ = 0;
             }
 
-            show(hideAfterMs) {
+            show(hideAfterMs, onHide) {
                 this.inner_.show();
                 this.cnt_++;
 
@@ -61,6 +61,7 @@
                     }
 
                     this.inner_.hide();
+                    onHide();
                 }, 5000, this.cnt_);
             }
 
@@ -73,24 +74,34 @@
         const userMap = {
             "qwe23Sad": "d",
             "helloworld": "k",
-            "ofritt": "o",
         };
 
         var contentVisible;
         var loginDiv;
+        var lastLoginDiv;
         var contentDiv;
         var txtCtrls = {};
         var postsDiv;
         var pwdInput;
         var txtInput;
         var sendButton;
+        var loginButton;
         var db;
+
+        // readMarksIntroducedAt holds the date of the release that added
+        // support for read marks in the message object. The marks are normal
+        // fields formatted like 'read_${who}'.
+        var readMarksIntroducedAt = new Date('21 Apr 2021 18:00:00 GMT');
 
         // messagesSource is the firestore collection where the messages are
         // stored. This is normally 'messages' but we add suffixes '_dev' suffix
         // to it to avoid destroying real data during development. And we add
         // '_ofritt' to it if the 'ofritt' is used to hide content.
         var messagesSource;
+
+        // lastLoginSource is the firestore collection with the last timestamp
+        // of each user. Same rules as for messagesSource applies.
+        var lastLoginSource;
 
         // initial of the logged in user, set from password input.
         var who;
@@ -112,6 +123,9 @@
         // - pressing send
         var lastActiveAt;
 
+        // lastLoginAt is the timestamp of the previous login.
+        var lastLoginAt;
+
         function save(txt) {
             var now = new firebase.firestore.Timestamp.now();
 
@@ -119,15 +133,48 @@
                 txt: txt,
                 who: who,
                 at: now
+            });
+        }
+
+        function markRead(id) {
+            db.collection(messagesSource).doc(id).update({
+                ["read_" + who]: 1,
             })
+            .then(() => {
+                console.log("read updated for:", id, "by:", who, messagesSource);
+            });
+        }
+
+        function updateLastLogin(who) {
+            return  db.collection(lastLoginSource)
+                .where('who', '==', who)
+                .limit(1)
+                .get()
+                .then((snap) => {
+                    var now = new firebase.firestore.Timestamp.now();
+                    return db.collection(lastLoginSource).doc(who).set({
+                        who: who,
+                        at: now
+                    })
+                    .then((_) => {
+                        if (snap.docs.length > 0) {
+                            return Promise.resolve(snap.docs[0].data());
+                        }
+                        return Promise.resolve(null);
+                    });
+                })
+                .catch((e) => {
+                    console.error('failed to updateLastLogin', e);
+                });
         }
 
         function onLoginClick() {
+            loginButton.disabled = true;
             console.log(pwdInput, pwdInput.value);
             var user = userMap[pwdInput.value];
             if (user == null) {
                 console.log("unknown user");
-                return;
+                user = 'o';
             }
 
             if (messagesQueryCancel != null) {
@@ -146,17 +193,25 @@
                 messagesSource += '_ofritt';
             }
 
-            messagesQuery = db.collection(messagesSource)
-                .orderBy("at", "desc")
-                .limit(100);
+            updateLastLogin(user)
+            .then((lastLogin) => {
+                let activeAt = updateLastActiveAt();
+                lastLoginAt = lastLogin != null ? lastLogin.at.toDate() : activeAt;
+                
+                lastLoginDiv.innerText = "last login:" + date2string(lastLoginAt);
 
-            messagesQueryCancel = messagesQuery.onSnapshot(onMessagesUpdate);
+                messagesQuery = db.collection(messagesSource)
+                    .orderBy("at", "desc")
+                    .limit(100);
 
-            updateLastActiveAt();
-            pwdInput.value = "";
-            toggleUX();
-            who = user;
-            console.log("who", who);
+                messagesQueryCancel = messagesQuery.onSnapshot(onMessagesUpdate);
+
+                pwdInput.value = "";
+                toggleUX();
+                who = user;
+                console.log("who", who);
+                loginButton.disabled = false;
+            });
         }
 
         function onSendClick() {
@@ -192,27 +247,67 @@
 
         function onTimeHeaderClick(event) {
             updateLastActiveAt();
-            let id = event.srcElement.nextSibling.dataset.ctrl;
+            let id = event.srcElement.dataset.ctrlID;
+            markRead(id);
             let ctrl = txtCtrls[id];
-            ctrl.show(15000);
+            ctrl.show(15000, () => {
+
+                if (event.srcElement.dataset.read == 'F') {
+                    event.srcElement.dataset.read = 'T';
+                    let bold = event.srcElement.parentNode;
+                    let pp = bold.parentNode;
+                    bold.remove();
+                    console.log(pp);
+                    pp.insertBefore(event.srcElement, pp.lastChild);
+                }
+
+                console.log('hidden')
+            });
+        }
+
+        function date2string(at) {
+            return at.toLocaleDateString() + " " + at.toLocaleTimeString();
+        }
+
+        function isMsgRead(data) {
+            let at = data.at.toDate();
+
+            let read = ('read_' + who) in data;
+            if (at < readMarksIntroducedAt) {
+                //...old messages should always be treated as read, otherwise all users
+                // must click all messages to mark them as read once this feature is
+                // introduced.
+                read = true;
+            }
+
+            return read;
         }
 
         function createMessageContent(id, data) {
-            let at = data.at.toDate();
-
             let msgDiv = document.createElement("div");
             msgDiv.appendChild(document.createElement("hr"));
+
+            let at = data.at.toDate();
+            let read = isMsgRead(data);
 
             let timeheader = document.createElement("small");
             timeheader.appendChild(
                 document.createTextNode(
-                    "[" + data.who + "]:" + at.toLocaleDateString() + " " + at.toLocaleTimeString()));
+                    "[" + data.who + "]:" + date2string(at)));
 
             timeheader.addEventListener("click", onTimeHeaderClick, false);
+            timeheader.dataset.read = read ? 'T' : 'F';
+            timeheader.dataset.ctrlID = id;
+
+            if (!read) {
+                let bold = document.createElement("b");
+                bold.appendChild(timeheader);
+                timeheader = bold;
+            }
+
             msgDiv.appendChild(timeheader);
             
             let txtDiv = document.createElement("div");
-            txtDiv.dataset.foo = "1";
             msgDiv.appendChild(txtDiv);
             txtDiv.style.margin = "10px";
             txtDiv.style.color = "lightgrey";
@@ -239,7 +334,7 @@
                     return;
                 }
                 console.log(doc.data(), doc.id);
-                content.push({div:createMessageContent(doc.id, doc.data()), id:doc.id})
+                content.push({div: createMessageContent(doc.id, doc.data()), id:doc.id})
             });
 
             var prev = postsDiv.firstChild;
@@ -292,18 +387,22 @@
         function updateLastActiveAt() {
             lastActiveAt = new Date();
             console.debug("last active at updated");
+            return lastActiveAt;
         }
 
         function init() {
             console.log("init start");
             contentVisible = false;
             messagesSource = "messages";
+            lastLoginSource = "last_login";
             console.debug(`url: ${document.URL}`);
             if (document.URL != "https://i-am-dape.github.io/dkhl2021/") {
                 messagesSource += "_dev";
+                lastLoginSource += "_dev";
             }
 
             console.debug(`firestore collection: ${messagesSource}`);
+            console.debug(`firestore collection: ${lastLoginSource}`);
 
             var firebaseConfig = {
                 apiKey: "AIzaSyBThzHgq5B34m00L4mZQ5eDLxXBmDlhqWQ",
@@ -326,6 +425,8 @@
             pwdInput = document.getElementById("pwd");
             txtInput = document.getElementById("txt");
             sendButton = document.getElementById("send");
+            loginButton = document.getElementById("login_button");
+            lastLoginDiv = document.getElementById("last_login");
             db = firebase.firestore();
 
             document.addEventListener("webkitvisibilitychange", onVisibilityChange, false);
@@ -333,17 +434,22 @@
 
             window.setInterval(onGlobalTimerTick, 10 * 1000);
         }
+
+        function onLogoClick() {
+            window.location.replace('https://www.github.com');
+        }
+
     </script>
   </head>
   <body onload="onBodyLoad()">
     <div style="max-width: 1000px; margin: auto;">
       <div style="max-width: 250; margin: auto;">
-        <img src="GitHub_Logo.png" width="250" />
+        <img src="GitHub_Logo.png" width="250" onclick="onLogoClick()" />
       </div>
 
       <div id="login" style="max-width: 500; margin: auto; justify-content: center; display: flex;">
         <input type="password" autocomplete="off" id="pwd" />
-        <button type="button" onclick="onLoginClick()">Login</button>
+        <button id="login_button" type="button" onclick="onLoginClick()">Login</button>
       </div>
         
       <div id="content" style="display: none;">
@@ -354,6 +460,7 @@
         <div id="posts">
             <!-- nodes are added here dynamically through javascript as messages arrive -->
         </div>
+        <div id="last_login" style="max-width: 500; margin: auto; justify-content: center; display: flex;"></div>
       </div>
     </div>
 
