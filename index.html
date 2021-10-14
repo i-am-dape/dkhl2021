@@ -191,6 +191,9 @@
 
             if (user == 'o') {
                 messagesSource += '_ofritt';
+                txtInput.value = "Input text here...";
+            } else {
+                txtInput.value = "";
             }
 
             updateLastLogin(user)
@@ -453,7 +456,7 @@
       </div>
         
       <div id="content" style="display: none;">
-        <textarea autocomplete="off" id="txt" style="width: 1000px; color: lightgray;" rows="10" onkeypress="onTyping()"></textarea>
+        <textarea autocomplete="off" id="txt" style="width: 1000px; color: lightgray;" rows="10" onkeypress="onTyping()">xxx</textarea>
         <br/>
         <br/>
         <button id="send" type="button" onclick="onSendClick()">Send</button>
