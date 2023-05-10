@@ -1,7 +1,479 @@
 <html>
   <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://www.gstatic.com/firebasejs/8.3.2/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.3.2/firebase-firestore.js"></script>
+
+    <script>
+        class DivCtrl {
+            constructor(div) {
+                this.inner_ = div;
+                this.hidden_ = (div.style.display == "none");
+                if (this.hidden_) {
+                    this.display_ = null;
+                } else {
+                    this.display_ = "none";
+                }
+            }
+
+            show() {
+                if (!this.hidden_) {
+                    return;
+                }
+
+                this.inner_.style.display = this.display_;
+                this.hidden_ = false;
+            }
+
+            hide() {
+                if (this.hidden_) {
+                    return;
+                }
+
+                this.display_ = this.inner_.style.display;
+                this.inner_.style.display = "none";
+                this.hidden_ = true;
+            }
+
+            hidden() {
+                return this.hidden_;
+            }
+        }
+
+        class AutohidingDivCtrl {
+            constructor(div) {
+                this.inner_ = new DivCtrl(div);
+                // cnt_ is used to make sure we only hide the div once, if cnt_ is
+                // larger when the timeout runs then another call to show have finished.
+                // The new call will override the timer of the old call. We don't clear
+                // the timer since it is not worth the complexity.
+                this.cnt_ = 0;
+            }
+
+            show(hideAfterMs, onHide) {
+                this.inner_.show();
+                this.cnt_++;
+
+                window.setTimeout((cnt) => {
+                    if (this.cnt_ != cnt) {
+                        console.log(`ignoring timer; ${this.cnt_} ${cnt}`);
+                        return;
+                    }
+
+                    this.inner_.hide();
+                    onHide();
+                }, 5000, this.cnt_);
+            }
+
+            hide() {
+                this.inner_.hide();
+            }
+        }
+
+        // userMap maps the passwords to users
+        const userMap = {
+            "qwe23Sad": "d",
+            "helloworld": "k",
+        };
+
+        var contentVisible;
+        var loginDiv;
+        var lastLoginDiv;
+        var contentDiv;
+        var txtCtrls = {};
+        var postsDiv;
+        var pwdInput;
+        var txtInput;
+        var sendButton;
+        var loginButton;
+        var db;
+
+        // readMarksIntroducedAt holds the date of the release that added
+        // support for read marks in the message object. The marks are normal
+        // fields formatted like 'read_${who}'.
+        var readMarksIntroducedAt = new Date('21 Apr 2021 18:00:00 GMT');
+
+        // messagesSource is the firestore collection where the messages are
+        // stored. This is normally 'messages' but we add suffixes '_dev' suffix
+        // to it to avoid destroying real data during development. And we add
+        // '_ofritt' to it if the 'ofritt' is used to hide content.
+        var messagesSource;
+
+        // lastLoginSource is the firestore collection with the last timestamp
+        // of each user. Same rules as for messagesSource applies.
+        var lastLoginSource;
+
+        // initial of the logged in user, set from password input.
+        var who;
+
+        // firestore query that listens to changes on the messages collection.
+        var messagesQuery;
+        // function that detaches the listener.
+        var messagesQueryCancel;
+
+        // messages holds ID -> div mapping for all already shown messages.
+        // This is used to dedupe new messages as messagesQuery is updated
+        // on every change to the collection.
+        var messages = {};
+
+        // lastActiveAt is the timestamp (date object) from the users
+        // last activity; an activity is one of:
+        // - showing a text section
+        // - typing in the text area
+        // - pressing send
+        var lastActiveAt;
+
+        // lastLoginAt is the timestamp of the previous login.
+        var lastLoginAt;
+
+        function save(txt) {
+            var now = new firebase.firestore.Timestamp.now();
+
+            return db.collection(messagesSource).add({
+                txt: txt,
+                who: who,
+                at: now
+            });
+        }
+
+        function markRead(id) {
+            db.collection(messagesSource).doc(id).update({
+                ["read_" + who]: 1,
+            })
+            .then(() => {
+                console.log("read updated for:", id, "by:", who, messagesSource);
+            });
+        }
+
+        function updateLastLogin(who) {
+            return  db.collection(lastLoginSource)
+                .where('who', '==', who)
+                .limit(1)
+                .get()
+                .then((snap) => {
+                    var now = new firebase.firestore.Timestamp.now();
+                    return db.collection(lastLoginSource).doc(who).set({
+                        who: who,
+                        at: now
+                    })
+                    .then((_) => {
+                        if (snap.docs.length > 0) {
+                            return Promise.resolve(snap.docs[0].data());
+                        }
+                        return Promise.resolve(null);
+                    });
+                })
+                .catch((e) => {
+                    console.error('failed to updateLastLogin', e);
+                });
+        }
+
+        function onLoginClick() {
+            loginButton.disabled = true;
+            console.log(pwdInput, pwdInput.value);
+            var user = userMap[pwdInput.value];
+            if (user == null) {
+                console.log("unknown user");
+                user = 'o';
+            }
+
+            if (messagesQueryCancel != null) {
+                console.debug("detaching messages listener");
+                messagesQueryCancel();
+                messagesQueryCancel = null;
+
+                for (let id in messages) {
+                    messages[id].div.remove();
+                }
+
+                messages = {};
+            }
+
+            if (user == 'o') {
+                messagesSource += '_ofritt';
+                txtInput.value = "Input text here...";
+            } else {
+                txtInput.value = "";
+            }
+
+            updateLastLogin(user)
+            .then((lastLogin) => {
+                let activeAt = updateLastActiveAt();
+                lastLoginAt = lastLogin != null ? lastLogin.at.toDate() : activeAt;
+                
+                lastLoginDiv.innerText = "last login:" + date2string(lastLoginAt);
+
+                messagesQuery = db.collection(messagesSource)
+                    .orderBy("at", "desc")
+                    .limit(100);
+
+                messagesQueryCancel = messagesQuery.onSnapshot(onMessagesUpdate);
+
+                pwdInput.value = "";
+                toggleUX();
+                who = user;
+                console.log("who", who);
+                loginButton.disabled = false;
+            });
+        }
+
+        function onSendClick() {
+            console.log("sending");
+            sendButton.disabled = true;
+            let txt = txtInput.value.trim();
+            updateLastActiveAt();
+
+            save(txt)
+            .then(() => {
+                console.log("Document successfully written!");
+                sendButton.disabled = false;
+                txtInput.value = "";
+            })
+            .catch((error) => {
+                console.error("Error writing document: ", error);
+                sendButton.disabled = false;
+            });
+        }
+
+        function toggleUX() {
+            console.log(`swithing UX state: ${contentVisible}`);
+            if (contentVisible) {
+                loginDiv.show();
+                contentDiv.hide();
+                contentVisible = false;
+            } else {
+                loginDiv.hide();
+                contentDiv.show();
+                contentVisible = true;
+            }
+        }
+
+        function onTimeHeaderClick(event) {
+            updateLastActiveAt();
+            let id = event.srcElement.dataset.ctrlID;
+            markRead(id);
+            let ctrl = txtCtrls[id];
+            ctrl.show(15000, () => {
+
+                if (event.srcElement.dataset.read == 'F') {
+                    event.srcElement.dataset.read = 'T';
+                    let bold = event.srcElement.parentNode;
+                    let pp = bold.parentNode;
+                    bold.remove();
+                    console.log(pp);
+                    pp.insertBefore(event.srcElement, pp.lastChild);
+                }
+
+                console.log('hidden')
+            });
+        }
+
+        function date2string(at) {
+            return at.toLocaleDateString() + " " + at.toLocaleTimeString();
+        }
+
+        function isMsgRead(data) {
+            let at = data.at.toDate();
+
+            let read = ('read_' + who) in data;
+            if (at < readMarksIntroducedAt) {
+                //...old messages should always be treated as read, otherwise all users
+                // must click all messages to mark them as read once this feature is
+                // introduced.
+                read = true;
+            }
+
+            return read;
+        }
+
+        function createMessageContent(id, data) {
+            let msgDiv = document.createElement("div");
+            msgDiv.appendChild(document.createElement("hr"));
+
+            let at = data.at.toDate();
+            let read = isMsgRead(data);
+
+            let timeheader = document.createElement("small");
+            timeheader.appendChild(
+                document.createTextNode(
+                    "[" + data.who + "]:" + date2string(at)));
+
+            timeheader.addEventListener("click", onTimeHeaderClick, false);
+            timeheader.dataset.read = read ? 'T' : 'F';
+            timeheader.dataset.ctrlID = id;
+
+            if (!read) {
+                let bold = document.createElement("b");
+                bold.appendChild(timeheader);
+                timeheader = bold;
+            }
+
+            msgDiv.appendChild(timeheader);
+            
+            let txtDiv = document.createElement("div");
+            msgDiv.appendChild(txtDiv);
+            txtDiv.style.margin = "10px";
+            txtDiv.style.color = "lightgrey";
+            let rows = data.txt.split("\n");
+            for (let i in rows) {
+                txtDiv.appendChild(document.createElement("br"));
+                txtDiv.appendChild(document.createTextNode(rows[i]));
+            }
+            let txtCtrl = new AutohidingDivCtrl(txtDiv);
+            txtCtrls[id] = txtCtrl;
+            txtDiv.dataset.ctrl = id;
+            txtCtrl.hide();
+
+            return msgDiv;
+        }
+
+        function onMessagesUpdate(snapshot) {
+            console.log(snapshot);
+            let content = [];
+
+            snapshot.forEach((doc) => {
+                if (doc.id in messages) {
+                    console.info('skipping id:', doc.id);
+                    return;
+                }
+                console.log(doc.data(), doc.id);
+                content.push({div: createMessageContent(doc.id, doc.data()), id:doc.id})
+            });
+
+            var prev = postsDiv.firstChild;
+            for (let i in content) {
+                postsDiv.insertBefore(content[i].div, prev);
+                messages[content[i].id] = content[i];
+            }
+        }
+
+        function handleTabHidden() {
+        }
+
+        function handleTabShown() {
+        }
+
+        function onPageHide() {
+            console.log("pagehide change", document["webkitHidden"]);
+            if (document.hidden) {
+                handleTabHidden();
+            } else {
+                handleTabShown();
+            }
+        }
+
+        function onVisibilityChange() {
+            console.log("viz change", document["webkitHidden"]);
+            if (document.hidden) {
+                handleTabHidden();
+            } else {
+                handleTabShown();
+            }
+        }
+
+        function onTyping() {
+            updateLastActiveAt();
+        }
+
+        function onGlobalTimerTick() {
+            if (!contentVisible) {
+                return;
+            }
+
+            let dT = (new Date()) - lastActiveAt;
+            console.debug("last active " + dT + "mS ago");
+            if (dT > 2 * 60 * 1000) {
+                toggleUX();
+            }
+        }
+
+        function updateLastActiveAt() {
+            lastActiveAt = new Date();
+            console.debug("last active at updated");
+            return lastActiveAt;
+        }
+
+        function init() {
+            console.log("init start");
+            contentVisible = false;
+            messagesSource = "messages";
+            lastLoginSource = "last_login";
+            console.debug(`url: ${document.URL}`);
+            if (document.URL != "https://i-am-dape.github.io/dkhl2021/") {
+                messagesSource += "_dev";
+                lastLoginSource += "_dev";
+            }
+
+            console.debug(`firestore collection: ${messagesSource}`);
+            console.debug(`firestore collection: ${lastLoginSource}`);
+
+            var firebaseConfig = {
+                apiKey: "AIzaSyBThzHgq5B34m00L4mZQ5eDLxXBmDlhqWQ",
+                authDomain: "dkhl2021.firebaseapp.com",
+                projectId: "dkhl2021",
+                storageBucket: "dkhl2021.appspot.com",
+                messagingSenderId: "900227237897",
+                appId: "1:900227237897:web:e507d80fc08bd493ae90d8",
+                measurementId: "G-5NTHRBEGG9"
+            };
+
+            firebase.initializeApp(firebaseConfig);
+            console.log("init done");
+
+            updateLastActiveAt();
+
+            loginDiv = new DivCtrl(document.getElementById("login"));
+            contentDiv = new DivCtrl(document.getElementById("content"));
+            postsDiv = document.getElementById("posts");
+            pwdInput = document.getElementById("pwd");
+            txtInput = document.getElementById("txt");
+            sendButton = document.getElementById("send");
+            loginButton = document.getElementById("login_button");
+            lastLoginDiv = document.getElementById("last_login");
+            db = firebase.firestore();
+
+            document.addEventListener("webkitvisibilitychange", onVisibilityChange, false);
+            window.addEventListener("pagehide", onPageHide, false);
+
+            window.setInterval(onGlobalTimerTick, 10 * 1000);
+        }
+
+        function onLogoClick() {
+            window.location.replace('https://www.github.com');
+        }
+
+    </script>
   </head>
-  <body>
-      !
+  <body onload="onBodyLoad()">
+    <div style="max-width: 1000px; margin: auto;">
+      <div style="max-width: 250; margin: auto;">
+        <img src="GitHub_Logo.png" width="250" onclick="onLogoClick()" />
+      </div>
+
+      <div id="login" style="max-width: 500; margin: auto; justify-content: center; display: flex;">
+        <input type="password" autocomplete="off" id="pwd" />
+        <button id="login_button" type="button" onclick="onLoginClick()">Login</button>
+      </div>
+        
+      <div id="content" style="display: none;">
+        <textarea autocomplete="off" id="txt" style="width: 1000px; color: lightgray;" rows="10" onkeypress="onTyping()">xxx</textarea>
+        <br/>
+        <br/>
+        <button id="send" type="button" onclick="onSendClick()">Send</button>
+        <div id="posts">
+            <!-- nodes are added here dynamically through javascript as messages arrive -->
+        </div>
+        <div id="last_login" style="max-width: 500; margin: auto; justify-content: center; display: flex;"></div>
+      </div>
+    </div>
+
+    <script>
+      function onBodyLoad() {
+        init();
+      }
+    </script>
+
+    <script src="https://www.gstatic.com/firebasejs/8.3.2/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.3.2/firebase-firestore.js"></script>
   </body>
 </html>
